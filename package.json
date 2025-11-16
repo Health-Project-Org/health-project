@@ -2,7 +2,7 @@
   "name": "cs6440-health-info-project",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://health-project-org.github.io/health-project/",
+  "homepage": "https://health-project-org.github.io/health-project//",
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
