@@ -34,6 +34,16 @@ export async function findPatient(input) {
   }
 }
 
+export async function getConditions(patientId) {
+  const base = FHIR_BASE_URL || "https://r4.smarthealthit.org";
+  
+  const r = await fetch(`${base}/Condition?patient=${encodeURIComponent(patientId)}`);
+  if (!r.ok) return [];
+
+  const json = await r.json();
+  return json.entry?.map(e => e.resource) || [];
+}
+
 export async function getObservations(patientId) {
   const base = process.env.REACT_APP_FHIR_BASE_URL || "https://r4.smarthealthit.org";
   const res = await fetch(
