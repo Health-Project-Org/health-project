@@ -319,19 +319,6 @@ export default function RewardsPage({ patient, onBack }) {
                 done: medPerfectDays >= m,
               }))}
             />
-            <MilestoneTile
-              title="Daily goal at 100% (days)"
-              subtitle={`${fmtNumber(goal100Days)} days at 100%`}
-              label={nextGoal ? `${fmtNumber(nextGoal)} days` : "All goal milestones completed 🎉"}
-              pct={nextGoal ? pct(goal100Days, nextGoal) : 100}
-              detailsTitle="Show goal milestones"
-              items={GOAL100_MILESTONES.map((m) => ({
-                key: m,
-                primary: `${fmtNumber(m)} days at 100%`,
-                secondary: `${goal100Days} / ${m} days`,
-                done: goal100Days >= m,
-              }))}
-            />
           </>
         )}
       </div>
