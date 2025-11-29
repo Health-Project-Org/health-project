@@ -408,7 +408,7 @@ export default function App() {
   useEffect(() => {
     async function fetchPatientsFromBackend() {
       try {
-        const res = await fetch("http://localhost:5050/api/patients");
+        const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}api/patients`);
         if (!res.ok) throw new Error("Failed to fetch patients");
         const data = await res.json();
         console.log("Patients fetched from backend:", data);

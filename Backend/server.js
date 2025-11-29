@@ -22,6 +22,10 @@ app.use("/api/leaderboard", leaderboard);
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 const port = process.env.PORT || 5050;
-app.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`);
+// app.listen(port, () => {
+//   console.log(`Server listening on http://localhost:${port}`);
+// });
+// IMPORTANT: Listen on 0.0.0.0 on Render
+app.listen(port, "0.0.0.0", () => {
+  console.log(`Server running on port ${port}`);
 });
