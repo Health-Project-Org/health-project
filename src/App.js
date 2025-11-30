@@ -509,7 +509,7 @@ export default function App() {
                 >
                   <input
                     type="text"
-                    placeholder="Enter patient name or ID"
+                    placeholder="Enter patient last name or ID"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     style={{ height: 46, borderRadius: 10, fontSize: 16 }}

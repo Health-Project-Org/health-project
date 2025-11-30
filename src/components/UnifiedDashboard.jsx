@@ -237,14 +237,26 @@ export default function UnifiedDashboard({ patient }) {
   }, [patient?.id]);
 
   useEffect(() => {
-    if (!patient?.id) return;
-    try {
-      const raw = localStorage.getItem(adhKey(patient.id));
-      const arr = raw ? JSON.parse(raw) : [];
-      setTakenSet(new Set(arr));
-      setDemo((d) => ({ ...d, medicationTakenToday: Array.isArray(arr) ? arr.length : 0 }));
-    } catch { setTakenSet(new Set()); }
-  }, [patient?.id, showMeds]);
+  if (!patient?.id) return;
+  try {
+    const raw = localStorage.getItem(adhKey(patient.id));
+    const arr = raw ? JSON.parse(raw) : [];
+    const keys = Array.isArray(arr) ? arr : [];
+    const nextSet = new Set(keys);
+
+    setTakenSet(nextSet);
+    setDemo((d) => ({
+      ...d,
+      medicationTakenToday: nextSet.size,
+    }));
+  } catch {
+    setTakenSet(new Set());
+    setDemo((d) => ({
+      ...d,
+      medicationTakenToday: 0,
+    }));
+  }
+}, [patient?.id, showMeds]);
 
   useEffect(() => {
     if (!patient?.id) return;
@@ -389,8 +401,7 @@ export default function UnifiedDashboard({ patient }) {
           >
             <div className="tile__title">Medication</div>
             <div className="tile__value">
-              {(demo.medicationTakenToday ?? takenCount ?? 0)}/
-              {demo.medsTotal ?? meds.active.length ?? 0}
+              {takenCount}/{meds.active.length || demo.medsTotal || 0}
             </div>
             <div className="tile__note">taken today • view meds</div>
           </button>

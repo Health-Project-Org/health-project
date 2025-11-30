@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { findPatient } from "../fhirService";
 
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 const LS_KEY = "hh_summary_v1";
@@ -47,14 +48,17 @@ function displayNameOf(patient) {
     .join(" ");
   return text || structured || "—";
 }
-
+function partyKeyFor(pid) {
+  return pid ? `hh_party_members_${pid}` : "hh_party_members_demo";
+}
 export default function Leaderboard({ patient }) {
   const pid = patient?.id;
   const [loading, setLoading] = useState(true);
   const [row, setRow] = useState({ name: "—", steps: 0, waterOz: 0, points: 0 });
-
+  const [partyMembers, setPartyMembers] = useState([]);
+  const [inviteQuery, setInviteQuery] = useState("");
+  const [inviteStatus, setInviteStatus] = useState("");
   const name = useMemo(() => displayNameOf(patient), [patient]);
-
   useEffect(() => {
     if (!pid) return;
     let ignore = false;
@@ -133,23 +137,218 @@ export default function Leaderboard({ patient }) {
 
     return () => { ignore = true; };
   }, [pid, patient, name]);
+  useEffect(() => {
+    if (!pid) return;
+    try {
+      const raw = localStorage.getItem(partyKeyFor(pid));
+      if (!raw) {
+        setPartyMembers([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setPartyMembers(parsed);
+      } else {
+        setPartyMembers([]);
+      }
+    } catch {
+      setPartyMembers([]);
+    }
+  }, [pid]);
+
+  useEffect(() => {
+    if (!pid || !partyMembers.length) return;
+    let ignore = false;
+
+    (async () => {
+      const { startISO, endISO } = thisWeekUTCRange();
+
+      try {
+        const updated = await Promise.all(
+          partyMembers.map(async (m) => {
+            try {
+              const r = await fetch(
+                `${API_BASE}/api/daily/${encodeURIComponent(m.id)}`
+              );
+              const docs = r.ok ? await r.json() : [];
+
+              const weekDocs = docs.filter(
+                (d) => d.date >= startISO && d.date <= endISO
+              );
+              const stepsTotal = weekDocs.reduce(
+                (s, d) => s + (d.steps || 0),
+                0
+              );
+              const waterOzTotal = weekDocs.reduce(
+                (s, d) =>
+                  s + ((d.hydrationPct || 0) / 100) * 88,
+                0
+              );
+              const pointsTotal = weekDocs.reduce(
+                (s, d) => s + dailyPoints(d),
+                0
+              );
+
+              return {
+                ...m,
+                steps: Math.max(0, Math.round(stepsTotal)),
+                waterOz: Math.max(0, Math.round(waterOzTotal)),
+                points: Math.max(0, Math.round(pointsTotal)),
+              };
+            } catch {
+              return m;
+            }
+          })
+        );
+
+        if (!ignore) {
+          setPartyMembers(updated);
+          try {
+            localStorage.setItem(
+              partyKeyFor(pid),
+              JSON.stringify(updated)
+            );
+          } catch {}
+        }
+      } catch {
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [pid, partyMembers.length]);
+  async function handleSendInvite() {
+    if (!pid) {
+      setInviteStatus(
+        "Please select a patient before inviting friends."
+      );
+      return;
+    }
+
+    const q = inviteQuery.trim();
+    if (!q) {
+      setInviteStatus("Please enter a patient's last name or ID.");
+      return;
+    }
+
+    setInviteStatus("Searching for patient to invite...");
+    try {
+      const results = await findPatient(q);
+      if (!results.length) {
+        setInviteStatus("No matching patient found to invite.");
+        return;
+      }
+      const invited = results[0];
+      const invitedName = displayNameOf(invited);
+
+      const newMember = {
+        id: invited.id,
+        name: invitedName,
+        steps: 0,
+        waterOz: 0,
+        points: 0,
+      };
+
+      const hostMember = {
+        id: pid,
+        name,
+        steps: 0,
+        waterOz: 0,
+        points: 0,
+      };
+      setPartyMembers((prev) => {
+        if (prev.some((m) => m.id === newMember.id)) {
+          setInviteStatus(
+            `${invitedName} is already in your party.`
+          );
+          return prev;
+        }
+        const next = [...prev, newMember];
+        try {
+          localStorage.setItem(
+            partyKeyFor(pid),
+            JSON.stringify(next)
+          );
+        } catch {}
+        setInviteStatus(
+          `${invitedName} has been added to your party leaderboard.`
+        );
+        return next;
+      });
+      try {
+        const invitedKey = partyKeyFor(invited.id);
+        const raw = localStorage.getItem(invitedKey);
+        let list = [];
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) list = parsed;
+          } catch {
+            list = [];
+          }
+        }
+        if (!list.some((m) => m.id === hostMember.id)) {
+          list.push(hostMember);
+          localStorage.setItem(invitedKey, JSON.stringify(list));
+        }
+      } catch {
+      }
+
+      setInviteQuery("");
+    } catch (err) {
+      console.error(err);
+      setInviteStatus("Invite failed. FHIR search error.");
+    }
+  }
+  function removeMember(memberId) {
+    if (!pid) return;
+    setPartyMembers((prev) => {
+      const next = prev.filter((m) => m.id !== memberId);
+      try {
+        localStorage.setItem(
+          partyKeyFor(pid),
+          JSON.stringify(next)
+        );
+      } catch {}
+      return next;
+    });
+  }
 
   return (
     <section className="summary" style={{ marginTop: 0 }}>
       <h2 className="summary__title">Leaderboard</h2>
       <p className="summary__subtitle">Compete with friends and keep each other motivated.</p>
-
       <div className="panel" style={{ marginTop: 12 }}>
         <div className="panel__header"><h3>Invite a friend</h3></div>
         <div style={{ display: "flex", gap: 10 }}>
-          <input className="input" type="email" placeholder="friend@email.com" style={{ flex: 1 }} />
-          <button className="chip">Send invite</button>
+          <input
+            className="input"
+            type="text"
+            placeholder="Enter patient last name or ID to invite"
+            style={{ flex: 1 }}
+            value={inviteQuery}
+            onChange={(e) => setInviteQuery(e.target.value)}
+          />
+          <button
+            className="chip"
+            type="button"
+            onClick={handleSendInvite}
+          >
+            Send invite
+          </button>
         </div>
-      </div>
-
+        {inviteStatus && (
+          <p style={{ marginTop: 8, fontSize: 12 }}>{inviteStatus}</p>
+        )}
+      </div>  
       <div className="panel" style={{ marginTop: 16 }}>
-        <div className="panel__header"><h3>This week (Sun–Sat)</h3></div>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div className="panel__header">
+          <h3>This week (Sun–Sat)</h3>
+        </div>
+        <table
+          style={{ width: "100%", borderCollapse: "collapse" }}
+        >
           <thead>
             <tr>
               <th style={th}>Rank</th>
@@ -160,13 +359,76 @@ export default function Leaderboard({ patient }) {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td style={td}>1</td>
-              <td style={td}>{row.name}</td>
-              <td style={td}>{loading ? "…" : fmt(row.steps)}</td>
-              <td style={td}>{loading ? "…" : fmt(row.waterOz)}</td>
-              <td style={td}>{loading ? "…" : fmt(row.points)}</td>
-            </tr>
+            {(() => {
+              const combined = [
+                {
+                  id: pid,
+                  name: row.name,
+                  steps: row.steps,
+                  waterOz: row.waterOz,
+                  points: row.points,
+                  isHost: true,
+                },
+                ...partyMembers.map((m) => ({
+                  ...m,
+                  isHost: false,
+                })),
+              ];
+              combined.sort(
+                (a, b) => (b.points || 0) - (a.points || 0)
+              );
+
+              return combined.map((m, idx) => (
+                <tr key={m.id || idx}>                
+                  <td style={td}>{idx + 1}</td>
+
+                  
+                  <td style={td}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span>
+                        {m.name}
+                        {m.isHost && (
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              color: "#4caf50",
+                              fontWeight: 600,
+                            }}
+                          >
+                            (You)
+                          </span>
+                        )}
+                      </span>
+
+                      {!m.isHost && (
+                        <button
+                          type="button"
+                          className="chip"
+                          style={{
+                            padding: "2px 8px",
+                            fontSize: 11,
+                          }}
+                          onClick={() => removeMember(m.id)}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </td>
+
+                  <td style={td}>{fmt(m.steps ?? 0)}</td>
+                  <td style={td}>{fmt(m.waterOz ?? 0)}</td>
+                  <td style={td}>{fmt(m.points ?? 0)}</td>
+                </tr>
+              ));
+            })()}
           </tbody>
         </table>
       </div>
